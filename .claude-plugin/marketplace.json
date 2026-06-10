@@ -1,0 +1,11 @@
+{
+  "name": "zdu_demo",
+  "owner": {
+    "name": "zdu-idm"
+  },
+  "metadata": {
+    "description": "Zdu AI skills and MCP tools"
+  },
+  "plugins": [
+  ]
+}
