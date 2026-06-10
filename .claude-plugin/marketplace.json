@@ -11,7 +11,7 @@
       "name": "python-code-reviewer",
       "source": {
         "source": "github",
-        "repo": "https://github.com/InstituteforDiseaseModeling/idm-agent-skills.git",
+        "repo": "InstituteforDiseaseModeling/idm-agent-skills",
         "path": "python-code-reviewer",
         "ref": "main",
         "description": "Pre-PR Python code review — quick grep-based checks"
