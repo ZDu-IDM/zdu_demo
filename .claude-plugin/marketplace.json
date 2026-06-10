@@ -14,14 +14,7 @@
         "repo": "https://github.com/InstituteforDiseaseModeling/idm-agent-skills.git",
         "path": "python-code-reviewer",
         "ref": "main",
-        "description": "Starsim and Sciris MCP tools and modeling skills",
-        "version": "1.2_2026.02.25",
-        "keywords": [
-          "starsim",
-          "sciris",
-          "disease-modeling",
-          "epidemiology"
-        ]
+        "description": "Starsim and Sciris MCP tools and modeling skills"
       }
     }
   ]
