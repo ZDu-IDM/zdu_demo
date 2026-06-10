@@ -8,13 +8,13 @@
   },
   "plugins": [
     {
-      "name": "project-improver",
+      "name": "python-code-reviewer",
       "source": {
         "source": "github",
         "repo": "https://github.com/InstituteforDiseaseModeling/idm-agent-skills.git",
         "path": "python-code-reviewer",
         "ref": "main",
-        "description": "Starsim and Sciris MCP tools and modeling skills"
+        "description": "Pre-PR Python code review — quick grep-based checks"
       }
     }
   ]
