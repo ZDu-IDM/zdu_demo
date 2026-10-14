@@ -1,0 +1,173 @@
+{
+  "skill_name": "idm-pkg-install",
+  "evals": [
+    {
+      "id": "pkg-001",
+      "name": "Asks for install source when not specified",
+      "description": "When the user gives a vague install request with no source specified, the agent should ask whether to install from PyPI, GitHub, or local path before running anything.",
+      "prompt": "Install somepkg for me.",
+      "rubric": {
+        "must_include_one_of": [
+          "PyPI",
+          "GitHub",
+          "local path",
+          "where should I install from"
+        ],
+        "must_not_include": [
+          "pip install somepkg"
+        ],
+        "pass_condition": "Agent asks the user to confirm the install source before running any install command"
+      }
+    },
+    {
+      "id": "pkg-002",
+      "name": "Verifies package exists on PyPI before installing",
+      "description": "When installing from PyPI, the agent should check the package exists using pip index versions before running pip install.",
+      "prompt": "Install emodpy-malaria from PyPI.",
+      "rubric": {
+        "must_include_one_of": [
+          "pip index versions",
+          "check if",
+          "verify",
+          "confirm",
+          "validate",
+          "ensure",
+          "available on pypi",
+          "exists on pypi",
+          "not on pypi"
+        ],
+        "pass_condition": "Agent verifies or proposes to verify the package exists on PyPI before installing"
+      }
+    },
+    {
+      "id": "pkg-003",
+      "name": "Creates isolated environment before installing",
+      "description": "The agent must never run an install command without first creating or confirming an isolated environment. It should ask about venv vs conda if not specified.",
+      "prompt": "Clone https://github.com/InstituteforDiseaseModeling/my-project and install it.",
+      "rubric": {
+        "must_include_one_of": [
+          "venv",
+          "conda",
+          "virtual environment",
+          "isolated environment",
+          "environment"
+        ],
+        "pass_condition": "Agent asks about an isolated environment (mentioning venv or conda by name) before running any install command"
+      }
+    },
+    {
+      "id": "pkg-004",
+      "name": "Asks dev vs prod mode when installable package found",
+      "description": "When a repo has a pyproject.toml or setup.py, the agent should ask whether to do a dev (editable) or prod install rather than choosing silently.",
+      "prompt": "Install this local repo at /home/user/emodpy using a venv.",
+      "rubric": {
+        "must_include_one_of": [
+          "dev install",
+          "editable",
+          "pip install -e",
+          "prod install",
+          "dev or prod",
+          "development",
+          "production",
+          "pip install ."
+        ],
+        "pass_condition": "Agent asks the user to confirm dev vs prod mode before running the install"
+      }
+    },
+    {
+      "id": "pkg-005",
+      "name": "Auto-selects requirements mode when no installable package found",
+      "description": "When a repo has only requirements.txt and no pyproject.toml or setup.py, the agent should auto-select requirements mode without prompting.",
+      "prompt": "Set up this repo using a venv — it only has a requirements.txt, no setup.py or pyproject.toml.",
+      "rubric": {
+        "must_include_one_of": [
+          "pip install -r requirements.txt",
+          "requirements mode",
+          "no installable package"
+        ],
+        "must_not_include": [
+          "dev install",
+          "prod install",
+          "pip install -e .",
+          "pip install ."
+        ],
+        "pass_condition": "Agent auto-selects requirements mode and does not ask about dev vs prod"
+      }
+    },
+    {
+      "id": "pkg-006",
+      "name": "Flags IDM-internal packages before proceeding",
+      "description": "When the repo contains Artifactory or internal git references, the agent must flag them to the user and stop for confirmation before proceeding.",
+      "prompt": "Install this repo. The requirements.txt has: git+https://idm-bamboo.idm.local/artifactory/emod-api.git",
+      "rubric": {
+        "must_include_one_of": [
+          "IDM network",
+          "Artifactory",
+          "internal",
+          "credentials",
+          "network access"
+        ],
+        "pass_condition": "Agent flags the internal dependency and asks for user confirmation before proceeding with the install"
+      }
+    },
+    {
+      "id": "pkg-007",
+      "name": "Redirects to GitHub workflow when package not found on PyPI",
+      "description": "When pip index versions returns nothing for a package, the agent should redirect to the GitHub or local path workflow rather than failing silently.",
+      "prompt": "Install dtk-tools from PyPI.",
+      "rubric": {
+        "must_include_one_of": [
+          "not on PyPI",
+          "GitHub",
+          "Artifactory",
+          "local path",
+          "not available"
+        ],
+        "pass_condition": "Agent recognises the package is not on PyPI and redirects to an alternative install source"
+      }
+    },
+    {
+      "id": "pkg-008",
+      "name": "Verifies installation after completing",
+      "description": "After a successful install, the agent should verify the package imported correctly and print the version.",
+      "prompt": "Install my-pkg from PyPI into a new venv.",
+      "rubric": {
+        "must_include_one_of": [
+          "pip show",
+          "__version__",
+          "import",
+          "verify"
+        ],
+        "pass_condition": "Agent runs a verification step (pip show or python import) after the install completes"
+      }
+    },
+    {
+      "id": "pkg-009",
+      "name": "Reports install summary on completion",
+      "description": "After a successful install, the agent should produce the structured summary defined in Output Format: source, strategy, mode, environment, and any caveats.",
+      "prompt": "The install of a repo at /home/user/my-project just completed successfully — it was a dev (editable) install from a local path into a venv at .venv/, using the repo's pyproject.toml. Give me the completion summary.",
+      "rubric": {
+        "required_sections": [
+          "Source",
+          "Strategy",
+          "Mode",
+          "Environment"
+        ],
+        "pass_condition": "Output contains all four required summary fields after the install completes"
+      }
+    },
+    {
+      "id": "pkg-010",
+      "name": "Never runs python setup.py install",
+      "description": "The agent must never suggest or run the deprecated python setup.py install command.",
+      "prompt": "Install this older repo in dev mode using a venv — it only has a setup.py.",
+      "rubric": {
+        "must_include_one_of": [
+          "pip install -e .",
+          "pip install ."
+        ],
+        "pass_condition": "Agent proposes pip install (not python setup.py install) for the install command"
+      }
+    }
+  ]
+}
