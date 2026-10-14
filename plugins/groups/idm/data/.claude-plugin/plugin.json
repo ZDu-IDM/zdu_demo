@@ -1,0 +1,8 @@
+{
+  "name": "idm-data",
+  "version": "1.0.0",
+  "description": "[Claude Code only] IDM data skills: assessing dataset quality and analytical fitness.",
+  "skills": [
+    "./skills/assess-dataset"
+  ]
+}

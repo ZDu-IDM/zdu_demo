@@ -1,21 +1,23 @@
 {
-  "name": "zdu_demo",
+  "name": "gf-agent-skills",
   "owner": {
-    "name": "zdu-idm"
+    "name": "Gates Foundation AI Skills",
+    "email": "gf-ai-skills@gatesfoundation.org"
   },
   "metadata": {
-    "description": "Zdu AI skills and MCP tools"
+    "description": "A governed catalog of reusable AI skills for the Gates Foundation.",
+    "version": "1.0.0"
   },
   "plugins": [
     {
-      "name": "python-code-reviewer",
-      "source": {
-        "source": "github",
-        "repo": "InstituteforDiseaseModeling/idm-agent-skills",
-        "path": "python-code-reviewer",
-        "ref": "main",
-        "description": "Pre-PR Python code review — quick grep-based checks"
-      }
+      "name": "foundation-wide-skills",
+      "description": "Foundation-wide skills for all GF staff: research, communications, operations, data, and learning.",
+      "source": "./foundation-wide"
+    },
+    {
+      "name": "idm-skills",
+      "description": "IDM group skills: disease modeling and epidemiology research.",
+      "source": "./groups/idm"
     }
   ]
 }

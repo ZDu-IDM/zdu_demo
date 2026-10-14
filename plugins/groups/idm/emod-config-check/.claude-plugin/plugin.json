@@ -1,0 +1,8 @@
+{
+  "name": "idm-emod-config-check",
+  "version": "0.1.0",
+  "description": "[Claude Code only] Check IDM EMOD config files for common mistakes before a simulation run.",
+  "skills": [
+    "./skills/emod-config-check"
+  ]
+}

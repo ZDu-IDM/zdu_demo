@@ -1,0 +1,8 @@
+{
+  "name": "idm-software-tools",
+  "version": "1.0.0",
+  "description": "[Claude Code only] IDM software tooling skills: installing IDM packages from PyPI, GitHub, or local paths.",
+  "skills": [
+    "./skills/idm-pkg-install"
+  ]
+}
