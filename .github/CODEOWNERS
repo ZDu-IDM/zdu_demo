@@ -1,0 +1,82 @@
+# CODEOWNERS — who gets routed a PR, per path.
+#
+# ROUTING, NOT A GATE. Approval happens outside GitHub — see CONTRIBUTING.md,
+# Approval process: AI-AskOps triage names a business owner and an IT owner,
+# the IT owner collects the approvals and attests, and a repo admin merges.
+# What these lines do is put the right people's names on the review request so
+# the PR reaches them at all. They do not block a merge.
+#
+# Two things still depend on them, which is why the paths are kept accurate:
+#   - scripts/governance_summary.py reads this file to work out who the
+#     BUSINESS owner is for a changed path, which is the one approval the
+#     process does ask for in GitHub, and what the intake card announces.
+#   - A reviewer who is auto-requested is far likelier to look than one who
+#     has to be found.
+#
+# PREREQUISITE: the @gatesfoundation/* teams below must exist, which requires
+# this repo to live in the gatesfoundation GitHub org (personal repos can't
+# use org teams), and each team needs write access — GitHub ignores a line
+# whose owner lacks it, silently.
+#
+# THE TWO ROLES, DELIBERATELY ON DIFFERENT PATHS:
+#   - Domain / business owner: the group's leads, SOLE owner of their group's
+#     skill paths. For foundation-wide and shared-workflows skills no separate
+#     group exists, so the Skills Working Group is the domain owner there too.
+#   - Skills Working Group: owner of the publication registry
+#     (/.claude-plugin/marketplace.json) and of catalog-level process files.
+#
+# Keep the Working Group's slug in step with GOVERNANCE_TEAM in
+# scripts/governance_summary.py. That script subtracts the Working Group from a
+# path's owners to find the business owner, so a mismatch makes every owner
+# look like a business owner — and the intake card then names whoever
+# approved first.
+#
+# WHY THE WORKING GROUP IS NOT LISTED ON GROUP SKILL PATHS:
+#   Multiple owners on one CODEOWNERS line are OR, not AND, so listing both
+#   teams on /plugins/groups/idm/ would have routed to either rather than
+#   both. Keeping the roles on separate paths is what lets the business owner
+#   be derived from the path at all.
+
+# Default owner for anything no more specific line claims
+#   CODEOWNERS is last-match-wins, so EVERY rule below overrides this one
+*                        @gatesfoundation/skills-working-group
+#
+# RESIDUAL LIMIT (do not paper over this):
+#   Someone in BOTH teams satisfies both owners with a single approval, and the
+#   second of the two required approvals may come from anyone with write access.
+
+# --- Catalog-level / process files → Skills Working Group ---
+/.github/                @gatesfoundation/skills-working-group
+/.claude-plugin/         @gatesfoundation/skills-working-group
+/scripts/                @gatesfoundation/skills-working-group
+/scanner/                @gatesfoundation/skills-working-group
+/CONTRIBUTING.md         @gatesfoundation/skills-working-group
+/README.md               @gatesfoundation/skills-working-group
+/docs/                   @gatesfoundation/skills-working-group
+
+# --- Foundation-wide skills → Skills Working Group (domain + governance board) ---
+/plugins/foundation-wide/        @gatesfoundation/skills-working-group
+
+# --- Group skills → the group's leads ONLY (domain owner) ---
+# The board is deliberately absent here; see "WHY THE BOARD IS NOT LISTED ON
+# GROUP SKILL PATHS" at the top. It still gates publication via /.claude-plugin/.
+# Only teams that exist AND have write access to this repo are valid code owners;
+# an unknown owner disables the whole line. A new group's <group>-leads line stays
+# COMMENTED until that team is created and granted repo write access — then just
+# uncomment the matching line (added by the PR that creates the group's directory).
+#
+# The catch-all below comes FIRST on purpose. CODEOWNERS is last-match-wins, so
+# every per-team line beneath it overrides it. Its job is the gap that opens the
+# moment a team ships before its own line exists: without it, plugins/groups/<new>/
+# matches nothing and has NO required reviewer at all — the skills merge ungoverned
+# and nothing reports it. A missing team line should cost a broader reviewer, not
+# no reviewer.
+/plugins/groups/                     @gatesfoundation/skills-working-group
+/plugins/groups/idm/                 @gatesfoundation/idm-leads
+
+# --- Shared workflows → Skills Working Group (no single team owns these) ---
+# An unrouted path has no required reviewer at all, which is the opposite of
+# what a centrally owned plugin should have. Where a shared plugin has a named
+# lead team, add a more specific line BELOW this one — CODEOWNERS is
+# last-match-wins, so a specific line above a general one is ignored.
+/plugins/shared-workflows/       @gatesfoundation/skills-working-group

@@ -1,0 +1,220 @@
+{
+  "skill_name": "skill-authoring",
+  "evals": [
+    {
+      "id": "sa-001",
+      "name": "routes a single-team task to the group namespace",
+      "description": "Ownership decides location: a task one team maintains goes under groups/<team>/<task>/ with a team prefix. Without the skill, the answer routes on who might find it useful. No must_not_include on \"shared-workflows\": a right answer names it when explaining when a task would move.",
+      "prompt": "My team (IDM) wants a skill that checks our EMOD config files for common mistakes. Other teams might find it handy too. Where should it live and what do we call the plugin?",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "plugins/groups/idm/",
+            "groups/idm/"
+          ],
+          [
+            "idm-"
+          ],
+          [
+            "own",
+            "maintain"
+          ]
+        ],
+        "pass_condition": "Routes to groups/idm/ with an idm- prefixed plugin name, giving ownership as the reason. Mentioning shared-workflows is fine."
+      }
+    },
+    {
+      "id": "sa-002",
+      "name": "refuses Bash for a foundation-wide skill",
+      "description": "The all-staff tool restriction is a hard CI failure, and a model without the skill will happily include Bash.\n\nRubric note: must_not_include is kept although it can fail a good answer that quotes the line as a counter-example (the engine is substring-only). For a security rule, an occasional false failure is safer than a silent pass.",
+      "prompt": "I'm writing a skill for all GF staff that summarises a folder of documents. Give me the frontmatter — it needs to read files and run a quick script to count pages.",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "may not",
+            "cannot",
+            "not allowed",
+            "not permitted"
+          ],
+          [
+            "Bash"
+          ],
+          [
+            "foundation-wide",
+            "all staff",
+            "all-staff"
+          ],
+          [
+            "plugins/groups",
+            "one team",
+            "group skill",
+            "group plugin"
+          ]
+        ],
+        "must_not_include": [
+          "allowed-tools: Read, Bash"
+        ]
+      }
+    },
+    {
+      "id": "sa-003",
+      "name": "explains 'built but not published' as expected",
+      "description": "The warning is the normal state for an unregistered plugin; reading it as an error sends someone hunting for a fix that doesn't exist. Registering in the same PR or a later one are both correct, so the rubric requires neither.",
+      "prompt": "validate_skill.py says my plugin is 'built but not published — no entry in .claude-plugin/marketplace.json'. How do I fix this before my PR?",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "expected",
+            "normal",
+            "not a problem",
+            "not an error",
+            "you don't",
+            "shouldn't"
+          ],
+          [
+            "register",
+            "registration",
+            "marketplace.json"
+          ],
+          [
+            "Skills Working Group",
+            "Working Group"
+          ]
+        ],
+        "pass_condition": "Says the warning is expected, identifies registration in marketplace.json as what publishes, and names the Working Group as reviewing it."
+      }
+    },
+    {
+      "id": "sa-004",
+      "name": "gives the required frontmatter, opts a pasted-content skill into Claude.ai, no version or owner",
+      "description": "Three likely mistakes without the skill: leaving out the claude-ai opt-in (this skill works on pasted content), writing GF fields at the top level instead of under metadata:, and adding `version: \"1.0.0\"` and `owner: policy`, which this catalog moved to plugin.json.\n\nRubric note: must_not_include matches the filled-in values, so 'there is no version or owner field' still passes.",
+      "prompt": "What exactly goes in the frontmatter of a SKILL.md? Give me a filled-in example for a skill called grant-summary owned by the policy team that reviews grant documents the user pastes in.",
+      "rubric": {
+        "must_include": [
+          "name",
+          "description",
+          "allowed-tools",
+          "surfaces",
+          "claude-ai",
+          "metadata",
+          "plugin.json"
+        ],
+        "must_not_include": [
+          "version: \"1.0.0\"",
+          "version: '1.0.0'",
+          "version: 1.0.0",
+          "owner: policy",
+          "owner: Policy",
+          "owner: \"policy"
+        ],
+        "pass_condition": "Gives name, description and allowed-tools at the top level; declares surfaces under metadata: including claude-ai; puts no version or owner in the frontmatter, and says both live in plugin.json (version required, author optional)."
+      }
+    },
+    {
+      "id": "sa-005",
+      "name": "recommends the commands that work on an unregistered plugin",
+      "description": "The --plugin forms only accept registered plugins, so they fail for a new contributor. Recommending them is the likeliest bad advice here.",
+      "prompt": "My new plugin isn't in the marketplace yet. How do I check my skill and run its evals locally before I open the PR?",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "validate_skill.py"
+          ],
+          [
+            "--changed-from"
+          ]
+        ],
+        "must_not_include": [
+          "python scripts/run_evals.py --plugin",
+          "python scripts/deploy.py --plugin"
+        ],
+        "pass_condition": "Recommends validate_skill.py and run_evals.py --changed-from. May mention the --plugin forms to warn against them, but never as a command to run."
+      }
+    },
+    {
+      "id": "sa-006",
+      "name": "writes a description that states when to use the skill",
+      "description": "A description saying what the skill IS rather than WHEN to use it is the commonest quality problem, and makes the skill load rarely.",
+      "prompt": "Here's my description: 'A skill for working with budget spreadsheets.' Is that good?",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "Use when"
+          ],
+          [
+            "trigger",
+            "when to use",
+            "loaded",
+            "match"
+          ]
+        ],
+        "pass_condition": "Calls the description too vague and rewrites it starting with 'Use when', with concrete triggering phrases."
+      }
+    },
+    {
+      "id": "sa-007",
+      "name": "marks a filesystem-dependent read-only skill as claude-code only",
+      "description": "A Read/Grep/Glob-only skill looks portable, so the tempting answer is 'both'. But Claude.ai's sandbox can't see the user's repo; portability depends on what the skill touches, not its tools.\n\nRubric note: the first group accepts a bare 'No.' and the fenced-block form 'surfaces: claude-code' followed by a newline, because a correct answer once failed on formatting alone. must_not_include has two leading spaces, so it matches the value written as a frontmatter line, not an answer that quotes it inline as a warning.",
+      "prompt": "My skill only uses Read, Grep and Glob -- it scans the user's repo for TODO comments and reports them. No Bash, nothing destructive. Can I set surfaces: claude-code, claude-ai?",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "claude-code only",
+            "only claude-code",
+            "just claude-code",
+            "not claude-ai",
+            "Claude Code only",
+            "only Claude Code",
+            "not Claude.ai",
+            "drop claude-ai",
+            "drop `claude-ai`",
+            "remove claude-ai",
+            "omit claude-ai",
+            "cannot declare `claude-ai`",
+            "surfaces: claude-code\n",
+            "surfaces: claude-code`",
+            "surfaces: claude-code\r\n",
+            "no.",
+            "no —",
+            "no -",
+            "no,"
+          ],
+          [
+            "sandbox",
+            "no access to",
+            "cannot see",
+            "local filesystem"
+          ]
+        ],
+        "must_not_include": [
+          "  surfaces: claude-code, claude-ai"
+        ],
+        "pass_condition": "Says the skill is claude-code only, because Claude.ai's sandbox can't see the user's files. Prose, a bare 'No.' plus the reason, inline or fenced values all pass; only declaring both surfaces fails."
+      }
+    },
+    {
+      "id": "sa-008",
+      "name": "sends a version bump to plugin.json, not SKILL.md",
+      "description": "Without the skill, the natural answer is to bump a version in the SKILL.md frontmatter, which now fails CI. Also tests that a references/ edit needs a bump.",
+      "prompt": "I fixed a typo in my skill's SKILL.md and updated a file in its references/ folder. What version do I need to bump before my PR?",
+      "rubric": {
+        "must_include_groups": [
+          [
+            "plugin.json"
+          ],
+          [
+            "patch",
+            "PATCH",
+            "1.0.1"
+          ]
+        ],
+        "must_not_include": [
+          "bump `metadata.version`",
+          "bump metadata.version",
+          "bump the `metadata.version`"
+        ],
+        "pass_condition": "Says to bump version in the plugin's .claude-plugin/plugin.json by a patch, that SKILL.md has no version, and that the references/ change counts."
+      }
+    }
+  ]
+}

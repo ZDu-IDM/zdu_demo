@@ -1,0 +1,75 @@
+name: Security scan
+
+# Scans skills for security red flags with cisco-ai-skill-scanner (static and
+# behavioral, no API key) plus the custom YARA rules; fails on HIGH. See
+# docs/SECURITY-SCANNING.md.
+#
+# No `paths:` filter: a required check must report on every PR, and the scan
+# walks the whole repo, so any file can change its result.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allow manual re-run from the Actions tab
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to code scanning
+  actions: read
+
+jobs:
+  scan:
+    name: Scan skills for security red flags
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install scanner
+        # Pinned for reproducible results; the same version as infosec-notify.yml.
+        run: pip install cisco-ai-skill-scanner==2.0.13 yara-x==1.19.0
+
+      - name: Scan skills (static + behavioral; fail on HIGH)
+        run: |
+          skill-scanner scan-all . \
+            --recursive \
+            --check-overlap \
+            --use-behavioral \
+            --custom-rules scanner/custom-yara \
+            --format sarif \
+            --output results.sarif \
+            --fail-on-severity high
+
+      # always(), so it still runs when the scan above fails.
+      - name: Scan full plugin tree (hooks, subagents, commands, MCP) with custom rules
+        if: always()
+        run: python scanner/scan_plugin_tree.py --sarif plugin-tree.sarif
+
+      # Inline annotations need code scanning enabled; non-fatal without it.
+      - name: Upload SARIF to code scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
+
+      # Its own category: an upload replaces every alert in its category.
+      - name: Upload plugin-tree SARIF to code scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: plugin-tree.sarif
+          category: plugin-tree
+
+      - name: Upload SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: |
+            results.sarif
+            plugin-tree.sarif

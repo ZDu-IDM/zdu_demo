@@ -1,0 +1,86 @@
+name: Infosec skill notification
+
+# Run manually for a merged PR to post one card per changed skill to Teams,
+# so Infosec/Legal have a record of what reached staff. Any file in a skill
+# counts except evals/; other plugin files post no card. Needs TEAMS_WEBHOOK.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Merged PR number to post cards for
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  notify:
+    name: Post Infosec card for a merged PR
+    runs-on: ubuntu-latest
+    env:
+      TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+    steps:
+      - name: Look up the PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.inputs.pr }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$PR" > pr.json
+          if [ "$(jq -r '.merged' pr.json)" != "true" ]; then
+            echo "PR #$PR is not merged." >&2; exit 1
+          fi
+          echo "merge_sha=$(jq -r '.merge_commit_sha' pr.json)" >> "$GITHUB_OUTPUT"
+          echo "url=$(jq -r '.html_url' pr.json)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          # The merge commit: what actually landed.
+          ref: ${{ steps.pr.outputs.merge_sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        if: env.TEAMS_WEBHOOK != ''
+        run: pip install pyyaml~=6.0 cisco-ai-skill-scanner==2.0.13
+
+      - name: Post cards for changed skills and plugin components
+        if: env.TEAMS_WEBHOOK != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.inputs.pr }}
+          MERGE_SHA: ${{ steps.pr.outputs.merge_sha }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          # Every changed file; split_plugin_changes.py does the filtering.
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename' > changed.txt || true
+          if [ ! -s changed.txt ]; then echo "No files in this PR."; exit 0; fi
+
+          # Files under a skill go to skills.txt. components.txt gets the rest,
+          # but nothing reads it: non-skill plugin files post no card.
+          python scripts/split_plugin_changes.py changed.txt skills.txt components.txt
+
+          # One card per affected skill, with its scan result.
+          while IFS= read -r f || [ -n "$f" ]; do
+            [ -z "$f" ] && continue
+            dir=$(dirname "$f")
+            if skill-scanner scan "$dir" --fail-on-severity high >/dev/null 2>&1; then
+              sec="✅ passed"
+            else
+              sec="⚠️ findings — review required"
+            fi
+            python scripts/teams_card.py "$f" \
+              --audience infosec --security "$sec" \
+              --repo "$REPO" --ref "$MERGE_SHA" --pr-url "$PR_URL" \
+              --headline "Skill merged — now available to staff" \
+              --post --webhook "$TEAMS_WEBHOOK"
+          done < skills.txt

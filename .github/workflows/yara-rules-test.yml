@@ -1,0 +1,31 @@
+name: YARA rule tests
+
+# Compiles the custom YARA rules and tests them against known-bad and
+# known-good fixtures, so a broken rule fails here.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only: the PR's own copy of this file runs, so its token must not write.
+permissions:
+  contents: read
+
+jobs:
+  yara-tests:
+    name: YARA rule tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install yara-x
+        run: pip install yara-x==1.19.0
+
+      - name: Run YARA rule behavior tests
+        run: python scanner/tests/test_yara_rules.py

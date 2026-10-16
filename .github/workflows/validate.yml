@@ -1,0 +1,33 @@
+name: Validate Skills
+
+# No `paths:` filter: a required check must report on every PR.
+on:
+  pull_request:
+
+# Read-only: the PR's own copy of this file runs, so its token must not write.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate skill structure and metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml~=6.0
+
+      - name: Validate skills
+        run: python scripts/validate_skill.py
+
+      - name: Changed skills must bump their plugin's version
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python scripts/check_plugin_versions.py

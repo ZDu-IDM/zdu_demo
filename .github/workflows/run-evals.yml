@@ -1,0 +1,58 @@
+name: Run Skill Evals
+
+on:
+  schedule:
+    - cron: '0 7 * * *'     # nightly full-suite regression (07:00 UTC ≈ midnight PT)
+  workflow_dispatch:        # allow manual trigger from Actions tab
+    inputs:
+      plugin:
+        description: 'Plugin to eval (leave blank for all)'
+        required: false
+        default: ''
+      skill:
+        description: 'Skill to eval (leave blank for all)'
+        required: false
+        default: ''
+
+# Read-only; the repo default would be write.
+permissions:
+  contents: read
+
+jobs:
+  run-evals:
+    name: Run evals against Claude
+    runs-on: ubuntu-latest
+    # Holds the full-strength key. The environment's main-only branch policy is
+    # what stops a dispatch from a branch reading it.
+    environment: evals-scheduled
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        # <1: anthropic 1.0 dropped `temperature`, and the scanner needs <1.
+        run: pip install "anthropic>=0.50,<1" pyyaml~=6.0
+
+      - name: Run evals
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.plugin }}" ]; then
+            ARGS="$ARGS --plugin ${{ github.event.inputs.plugin }}"
+          fi
+          if [ -n "${{ github.event.inputs.skill }}" ]; then
+            ARGS="$ARGS --skill ${{ github.event.inputs.skill }}"
+          fi
+          python scripts/run_evals.py $ARGS --output eval-results.json
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: eval-results.json

@@ -1,0 +1,133 @@
+name: Governance summary
+
+# Where is this PR in the approval flow? Writes a job summary and
+# governance-results.json, and on a manual run may post a Teams card.
+#
+# Runs when a required check finishes, when review-signal.yml relays a review,
+# or manually. Posts only on a manual run; which card
+# (ready / ready_changes / ready_reapprove / intake) is decided by card_stage()
+# in scripts/governance_summary.py. There is no "approved" card: the real
+# sign-off is in OneTrust, which GitHub can't see.
+
+on:
+  # Not pull_request_review, which would run the PR's own copy of this file with
+  # secrets in scope. workflow_run runs main's copy. Names must match each
+  # workflow's `name:` exactly; Semgrep is left out because it is advisory.
+  workflow_run:
+    workflows:
+      - Review signal
+      - Validate Skills
+      - PR Skill Evals
+      - Security scan
+      - YARA rule tests
+      - Lint
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to summarize
+        required: true
+
+# Read-only throughout: this workflow reports, it never changes the PR.
+permissions:
+  contents: read
+  pull-requests: read     # PR metadata, reviews, changed files
+  checks: read            # each check run's conclusion
+  actions: read           # the triggering workflow_run
+
+jobs:
+  summary:
+    name: Build consolidated governance summary
+    runs-on: ubuntu-latest
+    env:
+      TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install "pyyaml~=6.0"
+
+      # Review signal's artifact says which PR and what the review said.
+      - name: Fetch the review signal
+        if: github.event.workflow_run.name == 'Review signal'
+        uses: actions/download-artifact@v4
+        with:
+          name: review-signal
+          path: review-signal
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_PR: ${{ github.event.inputs.pr }}
+        run: |
+          # Read the PR number from the event payload with jq
+          state=""
+          case "$EVENT_NAME" in
+            workflow_run)
+              # A relayed review carries its own PR number.
+              if [ -f review-signal/pr-number.txt ]; then
+                num=$(cat review-signal/pr-number.txt)
+                state=$(cat review-signal/review-state.txt 2>/dev/null || echo "")
+              else
+                num=$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")
+              fi
+              ;;
+            workflow_dispatch)   num="$DISPATCH_PR" ;;
+            *)                   num="" ;;
+          esac
+          echo "num=$num" >> "$GITHUB_OUTPUT"
+          # Empty on a check-completion run; set only for a relayed review.
+          echo "review_state=$state" >> "$GITHUB_OUTPUT"
+          if [ -n "$num" ]; then echo "Summarizing PR #$num (review_state='$state')"; else echo "No PR associated - skipping"; fi
+
+      # Reading team membership needs an org token (Members: Read-only). If this
+      # fails, the summary still builds; no business owner is attributed.
+      - name: Mint a governance read token
+        id: gov-token
+        if: steps.pr.outputs.num != ''
+        continue-on-error: true
+        uses: actions/create-github-app-token@v3
+        with:
+          # `app-id` is the older name for `client-id`; still supported.
+          app-id: ${{ secrets.GOVERNANCE_APP_ID }}
+          private-key: ${{ secrets.GOVERNANCE_APP_PRIVATE_KEY }}
+          # Org-scoped, which team membership needs; the App is on this repo only.
+          owner: ${{ github.repository_owner }}
+
+      - name: Build governance summary
+        if: steps.pr.outputs.num != ''
+        env:
+          # Two tokens: the repo token can't read team membership, and the
+          # App token can only read team membership.
+          GH_TOKEN: ${{ github.token }}
+          GOVERNANCE_ORG_TOKEN: ${{ steps.gov-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.num }}
+          # Display fallback only; approvers come from the reviews API.
+          APPROVED_BY: ""
+        run: python scripts/governance_summary.py >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload governance-results.json
+        if: steps.pr.outputs.num != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-results
+          path: governance-results.json
+
+      # Needs the TEAMS_WEBHOOK secret (Teams > channel > Workflows > "Post to a
+      # channel when a webhook request is received"); skipped without it.
+      - name: Forward to Teams
+        # Manual dispatch only; automatic runs build the summary but post
+        # nothing. Whether a card is due is decided by the scripts; stage
+        # "none" posts nothing.
+        if: >-
+          steps.pr.outputs.num != '' && env.TEAMS_WEBHOOK != '' &&
+          github.event_name == 'workflow_dispatch'
+        run: python scripts/teams_card.py governance-results.json --post

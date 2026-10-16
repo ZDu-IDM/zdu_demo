@@ -1,0 +1,262 @@
+name: PR Brief
+
+# pull_request_target, so the PR's own code never runs with these secrets.
+# Never make this a required check: its paths: filter would block other PRs.
+# workflow_dispatch also runs main's copy, for older PRs.
+#
+# Two jobs, each with its own secrets, so neither can read the other's; the
+# brief reaches the AskOps job as an artifact.
+on:
+  # No synchronize while the AskOps email is manual-only: it ran only that job.
+  pull_request_target:
+    types: [opened, ready_for_review]
+    paths: ['plugins/**', '.claude-plugin/marketplace.json']
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to brief
+        required: true
+      post_card:
+        description: Post the reviewer card to Teams (off for email-only test runs)
+        type: boolean
+        default: true
+      resend_email:
+        description: Email AskOps even if this PR's request was already sent
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read            # find earlier askops-sent markers for this PR
+
+jobs:
+  brief:
+    name: Post reviewer brief
+    runs-on: ubuntu-latest
+    # Skip drafts (they would get two cards) and pushes (no model call per push);
+    # a dispatch has neither.
+    if: github.event.action != 'synchronize' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
+    environment: pr-brief
+
+    steps:
+      # The base commit, never the PR head.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install "anthropic>=0.50,<1"
+
+      # From the API, so both triggers work from just the PR number.
+      - name: Fetch PR diff and metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" \
+            -H "Accept: application/vnd.github.v3.diff" > pr.diff
+          wc -c pr.diff
+
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" \
+            --jq '.title' > pr_title.txt
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" \
+            --jq '.html_url' > pr_url.txt
+
+      # PR-controlled values go through env: or a file, never ${{ }} in run:.
+      - name: Generate and post the brief
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TEAMS_WEBHOOK: ${{ secrets.TEAMS_WEBHOOK }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          POST_CARD: ${{ inputs.post_card }}
+        run: |
+          # post_card=false on a dispatch skips the Teams card.
+          POST="--post"
+          if [ "$POST_CARD" = "false" ]; then
+            POST=""
+            echo "post_card=false - card will not be posted to Teams"
+          fi
+          python scripts/pr_brief.py \
+            --diff pr.diff \
+            --pr-number "$PR_NUMBER" \
+            --pr-title "$(cat pr_title.txt)" \
+            --pr-url "$(cat pr_url.txt)" \
+            --output brief-card.json $POST
+
+      - name: Upload the card
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-brief-card
+          path: brief-card.json
+          if-no-files-found: ignore
+
+  askops:
+    name: Email the AskOps request
+    needs: brief
+    # Manual only for now: a maintainer runs this workflow with the PR number.
+    # The gate still decides whether a request is due. Runs even if the brief
+    # failed; the request then says it has no brief.
+    if: always() && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: askops
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pyyaml~=6.0
+
+      # A missing card is expected when the brief failed.
+      - name: Download the brief card
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: pr-brief-card
+
+      - name: Fetch PR body, author and changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > pr_body.md
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.user.login' > pr_author.txt
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.html_url' > pr_url.txt
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[].filename' > changed_files.txt
+          wc -l changed_files.txt
+          # So the gate can tell a deletion from a failed fetch.
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '.[] | select(.status == "removed") | .filename' > removed_files.txt \
+            || rm -f removed_files.txt
+          HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq ".head.sha")
+
+          # The checkout is the base commit, so fetch the PR's registry as data.
+          if grep -qE "^[.]claude-plugin/marketplace[.]json$" changed_files.txt; then
+            # Fetch, then decode: a pipe would leave a 0-byte file on failure.
+            if c=$(gh api "repos/${REPO}/contents/.claude-plugin/marketplace.json?ref=${HEAD_SHA}" \
+                     --jq '.content'); then
+              printf %s "$c" | base64 -d > marketplace_head.json
+              echo "fetched head registry ($(wc -c < marketplace_head.json) bytes)"
+            else
+              rm -f marketplace_head.json
+              echo "head registry not fetched"
+            fi
+          fi
+
+          # Likewise the PR's SKILL.md and plugin.json files, which may be new.
+          mkdir -p head
+          grep -E '/SKILL[.]md$|/[.]claude-plugin/plugin[.]json$' changed_files.txt | while read -r f; do
+            mkdir -p "head/$(dirname "$f")"
+            if c=$(gh api "repos/${REPO}/contents/${f}?ref=${HEAD_SHA}" --jq ".content"); then
+              printf %s "$c" | base64 -d > "head/$f"
+            else
+              rm -f "head/$f"
+            fi
+          done
+          echo "fetched $(find head -type f | wc -l) head file(s) (SKILL.md + plugin.json)"
+
+      # Rules decide; with none firing, the brief's behaviour_change can add a
+      # request. Nothing is sent if a request already went out for this PR,
+      # unless resend_email is set. Any gate failure sends, to be safe.
+      - name: Is an AskOps request due?
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          EVENT_ACTION: ${{ github.event.action }}
+          RESEND: ${{ inputs.resend_email }}
+        run: |
+          # Count markers only from earlier runs of this workflow: an artifact of
+          # that name can come from any workflow, including one on the PR's branch.
+          # A failed lookup counts as not sent.
+          sent=0
+          for id in $(gh api --paginate \
+                "repos/${REPO}/actions/artifacts?name=askops-sent-${PR_NUMBER}" \
+                --jq '.artifacts[].workflow_run.id' 2>/dev/null); do
+            ours=$(gh api "repos/${REPO}/actions/runs/${id}" \
+                     --jq 'select(.path == ".github/workflows/pr-brief.yml" and (.event == "pull_request_target" or .event == "workflow_dispatch")) | "yes"' \
+                     2>/dev/null || true)
+            if [ "$ours" = "yes" ]; then sent=$((sent + 1)); fi
+          done
+          case "$sent" in ''|*[!0-9]*) sent=0;; esac
+          echo "earlier requests sent for this PR: $sent"
+          # A re-run sends nothing once a request went out, unless asked to.
+          if [ "$RESEND" = "true" ]; then
+            echo "resend_email=true - ignoring earlier requests"
+            sent=0
+          fi
+          mode=open
+          if [ "$EVENT_ACTION" = "synchronize" ]; then mode=push; fi
+          if ! python scripts/askops_gate.py \
+              --changed-files changed_files.txt \
+              --removed-files removed_files.txt \
+              --head-root head \
+              --marketplace-head marketplace_head.json \
+              --brief brief-card.json \
+              --mode "$mode" \
+              --already-sent "${sent:-0}" \
+              --reasons-out askops-reasons.txt; then
+            echo "gate failed - sending to be safe" > askops-reasons.txt
+            echo "send=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assemble and send
+        if: steps.gate.outputs.send == 'true'
+        env:
+          # Both are secrets: the URL alone can send mail through the flow.
+          ASKOPS_WEBHOOK: ${{ secrets.ASKOPS_WEBHOOK }}
+          ASKOPS_FLOW_SECRET: ${{ secrets.ASKOPS_FLOW_SECRET }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          python scripts/askops_request.py \
+            --pr-body pr_body.md \
+            --pr-number "$PR_NUMBER" \
+            --pr-url "$(cat pr_url.txt)" \
+            --pr-author "$(cat pr_author.txt)" \
+            --changed-files changed_files.txt \
+            --removed-files removed_files.txt \
+            --head-root head \
+            --marketplace-head marketplace_head.json \
+            --brief brief-card.json \
+            --reasons askops-reasons.txt \
+            --output askops-request.json \
+            --post
+
+      # Lets a later push see that this PR already sent its request.
+      - name: Record that the request was sent
+        if: steps.gate.outputs.send == 'true'
+        run: echo "sent" > askops-sent.txt
+
+      - name: Upload the sent marker
+        if: steps.gate.outputs.send == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: askops-sent-${{ github.event.pull_request.number || inputs.pr_number }}
+          path: askops-sent.txt
+
+      # Kept on failure, so an author can see what was read from their PR.
+      - name: Upload the request
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: askops-request
+          path: |
+            askops-request.json
+            askops-reasons.txt
+            pr_body.md
+          if-no-files-found: ignore

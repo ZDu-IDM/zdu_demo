@@ -1,0 +1,74 @@
+name: Semgrep scan
+
+# Static analysis of the repo's Python (injection, unsafe subprocess, secrets).
+# security-scan.yml covers skill content; this covers code structure.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # required to upload SARIF to code scanning
+  actions: read
+
+env:
+  SEMGREP_VERSION: "1.174.0"
+  SEMGREP_SEND_METRICS: "off"
+
+jobs:
+  semgrep:
+    name: Static analysis (Semgrep)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Semgrep
+        run: pip install "semgrep==${SEMGREP_VERSION}"
+
+      - name: Scan
+        # Explicit rulesets, not --config=auto. No --error: the gate below fails
+        # on error-severity findings only.
+        run: |
+          semgrep scan \
+            --config=p/python \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --sarif \
+            --output semgrep.sarif \
+            --metrics=off \
+            --exclude=.venv \
+            --exclude=dist \
+            --exclude='**/__pycache__'
+
+      - name: Summarize findings
+        if: always()
+        run: python scripts/semgrep_report.py semgrep.sarif
+
+      # Error-severity findings fail; warnings only show. Not a required check
+      # yet; when it becomes one, update README and docs/BRANCH-PROTECTION.md.
+      - name: Fail on error-severity findings
+        run: python scripts/semgrep_report.py semgrep.sarif --fail-on-error
+
+      # Inline annotations need code scanning enabled; non-fatal without it.
+      - name: Upload SARIF to code scanning
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep   # keeps these separate from security-scan's SARIF
+
+      - name: Upload SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: semgrep.sarif

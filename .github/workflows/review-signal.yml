@@ -1,0 +1,35 @@
+name: Review signal
+
+# Records a review for governance-summary.yml. pull_request_review runs the PR's
+# own copy of this file, so it deliberately holds no secrets and only saves two
+# facts to an artifact; governance-summary.yml reads them via workflow_run,
+# which runs main's copy.
+
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+
+# Declared explicitly, so it stays read-only whatever the repo default.
+permissions:
+  contents: read
+
+jobs:
+  signal:
+    name: Record the review
+    runs-on: ubuntu-latest
+    steps:
+      # workflow_run's payload carries neither the PR number nor the review.
+      - name: Write the review facts
+        run: |
+          set -euo pipefail
+          jq -r '.pull_request.number' "$GITHUB_EVENT_PATH" > pr-number.txt
+          jq -r '.review.state // ""'  "$GITHUB_EVENT_PATH" > review-state.txt
+          echo "pr=$(cat pr-number.txt) state=$(cat review-state.txt)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: review-signal
+          path: |
+            pr-number.txt
+            review-state.txt
+          retention-days: 1

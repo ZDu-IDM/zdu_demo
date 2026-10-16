@@ -1,0 +1,5 @@
+requests>=2.31
+pyyaml>=6.0
+# Pinned below 1.0: anthropic 1.0.0 removed the `temperature` kwarg from
+# messages.create(), and cisco-ai-skill-scanner also requires anthropic<1.
+anthropic>=0.50,<1

@@ -1,0 +1,77 @@
+name: PR Skill Evals
+
+# No `paths:` filter: a required check must report on every PR. run_evals.py
+# --changed-from exits early when no skill changed.
+on:
+  pull_request:
+
+# Read-only: the PR's own copy of this file runs, so its token must not write.
+permissions:
+  contents: read
+
+jobs:
+  pr-evals:
+    name: Run evals for changed skills
+    runs-on: ubuntu-latest
+    # Holds the spend-capped key: the PR's own copy of this file runs, and no
+    # branch policy can tell PRs apart, so the worst case is a bounded spend.
+    environment: evals-pr
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history required for git diff
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        # <1: anthropic 1.0 dropped `temperature`, and the scanner needs <1.
+        run: pip install "anthropic>=0.50,<1" pyyaml~=6.0
+
+      - name: Run evals for changed skills
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python scripts/run_evals.py \
+            --changed-from origin/${{ github.base_ref }} \
+            --output eval-results.json
+
+      # Changed skills in unregistered plugins, run by --path.
+      - name: Run evals for unpublished plugins
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python scripts/unpublished_skill_targets.py \
+            --changed-from origin/${{ github.base_ref }} \
+            --output unpublished.txt
+
+          if [ ! -s unpublished.txt ]; then
+            echo "No changed skills belong to an unpublished plugin."
+            exit 0
+          fi
+
+          # Run every target before failing, so one failure doesn't hide the rest.
+          status=0
+          while IFS=$'\t' read -r dir skill; do
+            [ -n "$dir" ] || continue
+            slug=$(printf '%s-%s' "$dir" "$skill" | tr -c 'A-Za-z0-9._-' '-')
+            echo "::group::${dir} --skill ${skill}"
+            python scripts/run_evals.py \
+              --path "$dir" --skill "$skill" \
+              --output "${slug}.eval-results.json" || status=1
+            echo "::endgroup::"
+          done < unpublished.txt
+          exit $status
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          path: |
+            eval-results.json
+            *.eval-results.json
+          name: pr-eval-results
+          # Most PRs produce neither file.
+          if-no-files-found: ignore

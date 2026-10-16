@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# AI planning artifacts (superpowers plugin)
+docs/superpowers/
+.superpowers
+
+# Packaging output
+dist/
+
+# scan_repo_skills.py output
+repo_skills.html
+*_skills.html
+
+# Scanner output (written by local runs of the security scans)
+*.sarif
+
+# preview_infosec_cards.py output (local card previews, never committed)
+card-preview/
+
+# Eval outputs and real fixtures (may contain PII)
+eval-results.json
+*.eval-results.json
+*.eval.log
+evals/fixtures/real/
+fixtures/real/
+.env
+.env.local
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+
+# Design specs and implementation plans are working artifacts for a branch,
+# not catalog content. Kept on disk, deliberately never checked in.
+docs/specs/
+docs/plans/
+
+# Local test copies of catalog skills. `scripts/refresh_local_skills.py` copies
+# them here so Claude Code loads them from .claude/skills/; the originals live
+# under plugins/. Committing a copy duplicates the catalog at whatever version
+# was last copied, which reads as a half-applied change in review.
+.claude/skills/
+.claude/settings.local.json
+
+# `claude plugin eval` suites and their run output. A different harness from
+# scripts/run_evals.py, with a different format (evals/<case>/prompt.md) and a
+# different home (the plugin root, since --eval-dir refuses to sit inside
+# skills/). It costs real spend per run and CI cannot execute it, so the cases
+# stay local rather than becoming a second eval convention contributors have
+# to learn.
+plugins/**/evals/*/prompt.md
+plugins/**/evals/*/graders/
+plugins/**/evals/results/
+
+# preview_askops_request.py output (local email previews, never committed)
+askops-preview/

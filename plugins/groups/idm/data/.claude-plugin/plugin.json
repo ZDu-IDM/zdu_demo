@@ -1,0 +1,9 @@
+{
+  "name": "idm-data",
+  "version": "1.0.1",
+  "description": "[Claude Code only] IDM data skills: assessing dataset quality and analytical fitness.",
+  "author": {
+    "name": "Emily Driano",
+    "email": "emily.driano@gatesfoundation.org"
+  }
+}
