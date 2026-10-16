@@ -1,8 +1,0 @@
-{
-  "name": "authoring",
-  "version": "1.0.0",
-  "description": "[Claude Code only] Contribute a skill to the gf-agent-skills catalog — ask where your skill should live, what SKILL.md needs, which surfaces to declare, what evals CI requires, or how to publish it.",
-  "skills": [
-    "./skills/skill-authoring"
-  ]
-}

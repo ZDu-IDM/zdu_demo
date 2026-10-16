@@ -1,8 +1,0 @@
-{
-  "name": "emerging-technology-communications",
-  "version": "1.0.0",
-  "description": "Emerging Technology team's communications skills.",
-  "skills": [
-    "./skills/pirate-speak"
-  ]
-}
